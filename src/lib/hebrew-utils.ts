@@ -20,44 +20,55 @@ const MONTH_NAMES: Record<number, string> = Object.fromEntries(
   Object.entries(HEBREW_MONTHS).map(([name, num]) => [num, name])
 );
 
+export { MONTH_NAMES };
+
+function isValidYear(y: number): boolean {
+  return y >= 1990 && y <= 2040;
+}
+
+function normalizeYear(y: string): string | null {
+  if (y.length === 2) {
+    const num = parseInt(y, 10);
+    const full = num > 50 ? `19${y}` : `20${y}`;
+    return isValidYear(parseInt(full, 10)) ? full : null;
+  }
+  if (y.length === 4) {
+    return isValidYear(parseInt(y, 10)) ? y : null;
+  }
+  // 3-digit or other lengths — invalid
+  return null;
+}
+
 /**
  * Parse a month string that might be Hebrew name or numeric.
- * Returns { month: "ינואר", year: "2024" } or null.
+ * Validates that year is in a realistic range (1990-2040).
  */
 export function parseMonthYear(text: string): {
   month: string;
   year: string;
 } | null {
-  // Try "ינואר 2024" or "ינואר 24"
-  for (const [name] of Object.entries(HEBREW_MONTHS)) {
-    const regex = new RegExp(`${name}\\s+(\\d{2,4})`);
-    const match = text.match(regex);
-    if (match) {
-      const year = normalizeYear(match[1]);
-      return { month: name, year };
-    }
-  }
-
-  // Try numeric: "01/2024", "1/2024", "01-2024", "01.2024"
+  // Priority 1: numeric "01/2025", "1/2025", "01-2025", "01.2025"
   const numericMatch = text.match(/(\d{1,2})[/\-.](\d{2,4})/);
   if (numericMatch) {
     const monthNum = parseInt(numericMatch[1], 10);
-    if (monthNum >= 1 && monthNum <= 12) {
-      const year = normalizeYear(numericMatch[2]);
+    const year = normalizeYear(numericMatch[2]);
+    if (monthNum >= 1 && monthNum <= 12 && year) {
       const monthName = MONTH_NAMES[monthNum] || String(monthNum);
       return { month: monthName, year };
     }
   }
 
-  return null;
-}
-
-function normalizeYear(y: string): string {
-  if (y.length === 2) {
-    const num = parseInt(y, 10);
-    return num > 50 ? `19${y}` : `20${y}`;
+  // Priority 2: "ינואר 2024" or "ינואר 24"
+  for (const [name] of Object.entries(HEBREW_MONTHS)) {
+    const regex = new RegExp(`${name}\\s+(\\d{2,4})`);
+    const match = text.match(regex);
+    if (match) {
+      const year = normalizeYear(match[1]);
+      if (year) return { month: name, year };
+    }
   }
-  return y;
+
+  return null;
 }
 
 /**
@@ -69,7 +80,6 @@ export function monthLabel(month: string, year: string): string {
 
 /**
  * Build a safe filename from name + month + year.
- * Hebrew characters are fine in filenames — just strip problematic chars.
  */
 export function buildFilename(
   name: string,
@@ -95,9 +105,7 @@ export function buildZipFilename(): string {
 export function normalizeHebrew(text: string): string {
   return (
     text
-      // Remove Hebrew niqqud (diacritics)
       .replace(/[\u0591-\u05C7]/g, "")
-      // Collapse whitespace
       .replace(/\s+/g, " ")
       .trim()
   );
@@ -109,13 +117,9 @@ export function normalizeHebrew(text: string): string {
 export function cleanName(raw: string): string {
   return (
     raw
-      // Remove sequences of digits (ID numbers)
       .replace(/\d{5,}/g, "")
-      // Remove common prefixes/suffixes
       .replace(/ת\.?ז\.?:?/g, "")
-      // Remove punctuation except hyphens
       .replace(/[.,;:!?()[\]{}'"]/g, "")
-      // Collapse whitespace
       .replace(/\s+/g, " ")
       .trim()
   );

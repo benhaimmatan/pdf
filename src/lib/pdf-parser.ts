@@ -6,79 +6,130 @@ import {
   cleanName,
 } from "./hebrew-utils";
 
-interface TextItem {
-  str: string;
-  transform: number[];
-}
-
 /**
- * Group text items by Y position to reconstruct lines.
- * pdf.js returns individual spans; we group by Y (tolerance ~3 units).
+ * Extract all raw text strings from a PDF page using getOperatorList.
+ *
+ * Some Hebrew payroll PDFs store text reversed with special font encodings
+ * that getTextContent() can't fully decode (missing digits). The operator
+ * list gives us the raw text strings which are complete but may be reversed.
  */
-function groupIntoLines(items: TextItem[]): string[] {
-  if (items.length === 0) return [];
+async function extractRawTexts(
+  page: import("pdfjs-dist").PDFPageProxy
+): Promise<string[]> {
+  const opList = await page.getOperatorList();
+  const pdfjsLib = await import("pdfjs-dist");
+  const { OPS } = pdfjsLib;
 
-  // Sort by Y descending (top of page first), then X ascending
-  const sorted = [...items].sort((a, b) => {
-    const yDiff = b.transform[5] - a.transform[5];
-    if (Math.abs(yDiff) > 3) return yDiff;
-    return a.transform[4] - b.transform[4];
-  });
+  const texts: string[] = [];
 
-  const lines: { y: number; items: TextItem[] }[] = [];
+  for (let i = 0; i < opList.fnArray.length; i++) {
+    const fn = opList.fnArray[i];
+    const args = opList.argsArray[i];
 
-  for (const item of sorted) {
-    const y = item.transform[5];
-    const existing = lines.find((l) => Math.abs(l.y - y) < 3);
-    if (existing) {
-      existing.items.push(item);
-    } else {
-      lines.push({ y, items: [item] });
+    if (fn === OPS.showText || fn === OPS.showSpacedText) {
+      const glyphs = args[0];
+      let text = "";
+      if (Array.isArray(glyphs)) {
+        for (const g of glyphs) {
+          if (typeof g === "string") text += g;
+          else if (typeof g === "object" && g !== null && g.unicode) text += g.unicode;
+        }
+      }
+      const trimmed = text.trim();
+      if (trimmed.length > 0) {
+        texts.push(trimmed);
+      }
     }
   }
 
-  // Sort items within each line by X position (left-to-right for joining)
-  return lines.map((line) => {
-    line.items.sort((a, b) => a.transform[4] - b.transform[4]);
-    return line.items.map((i) => i.str).join(" ");
-  });
+  return texts;
 }
 
 /**
- * Extract month/year from page lines.
- * Looks for "תלוש שכר לחודש" pattern.
+ * BiDi-aware reversal for Hebrew text stored in visual order.
+ * Reverses the entire string, then restores LTR runs (digit/punctuation clusters).
+ */
+function reverseHebrew(text: string): string {
+  const reversed = text.split("").reverse().join("");
+  // Restore digit+punctuation clusters that got incorrectly reversed
+  return reversed.replace(/[\d/.\-:]+/g, (match) =>
+    match.split("").reverse().join("")
+  );
+}
+
+/**
+ * Detect if the document stores text in reversed (visual) order.
+ * Checks for known reversed Hebrew patterns across all extracted texts.
+ */
+function detectReversedDocument(texts: string[]): boolean {
+  for (const text of texts) {
+    // "שולת" = reversed "תלוש" (payslip)
+    // "דובכל" = reversed "לכבוד" (addressed to)
+    // "ספדוה" = reversed "הודפס" (printed)
+    if (
+      text.includes("שולת") ||
+      text.includes("דובכל") ||
+      text.includes("ספדוה")
+    ) {
+      return true;
+    }
+    // Text starting with digits then Hebrew = visual order
+    if (/^\d+[/.]\d+\s+[\u0590-\u05FF]/.test(text)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Normalize a raw text string: reverse if document is reversed, clean up.
+ */
+function normalizeRawText(text: string, isDocReversed: boolean): string {
+  let result = text;
+  if (isDocReversed && /[\u0590-\u05FF]/.test(result)) {
+    result = reverseHebrew(result);
+  }
+  return normalizeHebrew(result);
+}
+
+/**
+ * Extract month from raw text strings.
  */
 function extractMonth(
-  lines: string[]
+  texts: string[],
+  isDocReversed: boolean
 ): { month: string; year: string } | null {
-  for (const line of lines) {
-    const normalized = normalizeHebrew(line);
+  for (const raw of texts) {
+    const text = normalizeRawText(raw, isDocReversed);
 
-    // Primary pattern: "תלוש שכר לחודש ינואר 2024"
-    const payslipMatch = normalized.match(/תלוש\s*שכר\s*(?:ל(?:חודש)?)\s*(.*)/);
+    // Look for "תלוש שכר לחודש MM/YYYY"
+    const payslipMatch = text.match(
+      /תלוש\s*שכר\s*(?:ל(?:חודש|חוד)?)\s*([\d/\-.]+)/
+    );
     if (payslipMatch) {
       const result = parseMonthYear(payslipMatch[1]);
       if (result) return result;
     }
 
-    // Secondary: "חודש: ינואר 2024" or "חודש 01/2024"
-    const monthMatch = normalized.match(/חודש\s*:?\s*(.*)/);
+    // "חודש: MM/YYYY"
+    const monthMatch = text.match(/חודש\s*:?\s*([\d/\-.]+)/);
     if (monthMatch) {
       const result = parseMonthYear(monthMatch[1]);
       if (result) return result;
     }
 
-    // Tertiary: "תקופה: 01/2024"
-    const periodMatch = normalized.match(/תקופה\s*:?\s*(.*)/);
+    // "תקופה: MM/YYYY"
+    const periodMatch = text.match(/תקופה\s*:?\s*([\d/\-.]+)/);
     if (periodMatch) {
       const result = parseMonthYear(periodMatch[1]);
       if (result) return result;
     }
   }
 
-  // Fallback: scan all lines for any month-year pattern
-  for (const line of lines) {
-    const result = parseMonthYear(normalizeHebrew(line));
+  // Fallback: search all texts for any month pattern
+  for (const raw of texts) {
+    const text = normalizeRawText(raw, isDocReversed);
+    const result = parseMonthYear(text);
     if (result) return result;
   }
 
@@ -86,39 +137,43 @@ function extractMonth(
 }
 
 /**
- * Extract employee name from page lines.
- * Looks for "לכבוד" marker, then the next non-empty line.
+ * Extract name from raw text strings.
  */
-function extractName(lines: string[]): string | null {
-  for (let i = 0; i < lines.length; i++) {
-    const normalized = normalizeHebrew(lines[i]);
+function extractName(texts: string[], isDocReversed: boolean): string | null {
+  // Strategy 1: Find "לכבוד" text — the NEXT text item is the name
+  for (let i = 0; i < texts.length; i++) {
+    const text = normalizeRawText(texts[i], isDocReversed);
 
-    // Primary: "לכבוד" — name is on this line or the next
-    if (normalized.includes("לכבוד")) {
-      // Check if name is on the same line after "לכבוד"
-      const afterMarker = normalized.split("לכבוד")[1]?.trim();
-      if (afterMarker && afterMarker.length > 1) {
-        const name = cleanName(afterMarker);
+    if (text.includes("לכבוד")) {
+      // Check same string after "לכבוד"
+      const after = text.split("לכבוד")[1]?.trim();
+      if (after && after.length > 1) {
+        const name = cleanName(after);
         if (name.length > 1) return name;
       }
-      // Otherwise check next lines
-      for (let j = i + 1; j < Math.min(i + 3, lines.length); j++) {
-        const candidate = cleanName(normalizeHebrew(lines[j]));
-        if (candidate.length > 1) return candidate;
+
+      // Check next text items
+      for (let j = i + 1; j < Math.min(i + 5, texts.length); j++) {
+        const next = normalizeRawText(texts[j], isDocReversed);
+        const name = cleanName(next);
+        // A name should be mostly Hebrew, 2+ chars, no colons
+        if (
+          name.length > 2 &&
+          !name.includes(":") &&
+          /[\u0590-\u05FF]/.test(name)
+        ) {
+          return name;
+        }
       }
     }
+  }
 
-    // Secondary: "שם העובד:" or "שם עובד:"
-    const nameFieldMatch = normalized.match(/שם\s*(?:ה)?עובד\s*:?\s*(.*)/);
-    if (nameFieldMatch) {
-      const name = cleanName(nameFieldMatch[1]);
-      if (name.length > 1) return name;
-    }
-
-    // Tertiary: "עובד:" alone
-    const workerMatch = normalized.match(/^עובד\s*:?\s*(.*)/);
-    if (workerMatch) {
-      const name = cleanName(workerMatch[1]);
+  // Strategy 2: "שם העובד:" field
+  for (const raw of texts) {
+    const text = normalizeRawText(raw, isDocReversed);
+    const match = text.match(/שם\s*(?:ה)?עובד\s*:?\s*(.*)/);
+    if (match) {
+      const name = cleanName(match[1]);
       if (name.length > 1) return name;
     }
   }
@@ -127,29 +182,28 @@ function extractName(lines: string[]): string | null {
 }
 
 /**
- * Parse a single PDF page and extract payslip info.
+ * Parse a single PDF page.
  */
 export async function parsePage(
   page: import("pdfjs-dist").PDFPageProxy,
   pageIndex: number
 ): Promise<ParsedPayslip> {
-  const textContent = await page.getTextContent();
+  const texts = await extractRawTexts(page);
+  const isDocReversed = detectReversedDocument(texts);
 
-  const items: TextItem[] = textContent.items
-    .filter(
-      (item) =>
-        "str" in item && typeof item.str === "string" && item.str.trim().length > 0
-    )
-    .map((item) => ({
-      str: (item as { str: string }).str,
-      transform: (item as { transform: number[] }).transform,
-    }));
+  const monthData = extractMonth(texts, isDocReversed);
+  const name = extractName(texts, isDocReversed);
 
-  const lines = groupIntoLines(items);
-  const fullText = lines.join("\n");
-
-  const monthData = extractMonth(lines);
-  const name = extractName(lines);
+  // Debug page 0
+  if (pageIndex === 0) {
+    console.log(
+      `[PDF Parser] Page 0: reversed=${isDocReversed}, name="${name}", month="${monthData?.month}/${monthData?.year}"`
+    );
+    // Log first 5 raw and normalized texts for debugging
+    for (let i = 0; i < Math.min(5, texts.length); i++) {
+      console.log(`[PDF Parser] raw[${i}]: "${texts[i]}" → "${normalizeRawText(texts[i], isDocReversed)}"`);
+    }
+  }
 
   let confidence: ParsedPayslip["confidence"] = "none";
   if (name && monthData) confidence = "high";
@@ -164,13 +218,12 @@ export async function parsePage(
       ? monthLabel(monthData.month, monthData.year)
       : null,
     confidence,
-    rawText: fullText,
+    rawText: texts.map((t) => normalizeRawText(t, isDocReversed)).join("\n"),
   };
 }
 
 /**
- * Scan entire PDF and parse all pages.
- * Processes in chunks of 50 to keep UI responsive.
+ * Scan entire PDF.
  */
 export async function scanPdf(
   file: ArrayBuffer,
@@ -178,8 +231,7 @@ export async function scanPdf(
 ): Promise<ParsedPayslip[]> {
   const pdfjsLib = await import("pdfjs-dist");
 
-  pdfjsLib.GlobalWorkerOptions.workerSrc =
-    `https://cdn.jsdelivr.net/npm/pdfjs-dist@5.5.207/build/pdf.worker.min.mjs`;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/build/pdf.worker.min.mjs`;
 
   const pdf = await pdfjsLib.getDocument({ data: file }).promise;
   const totalPages = pdf.numPages;
@@ -193,16 +245,14 @@ export async function scanPdf(
 
     for (let i = start; i < end; i++) {
       chunkPromises.push(
-        pdf.getPage(i + 1).then((page) => parsePage(page, i))
+        pdf.getPage(i + 1).then((p) => parsePage(p, i))
       );
     }
 
     const chunkResults = await Promise.all(chunkPromises);
     results.push(...chunkResults);
-
     onProgress?.(end, totalPages);
 
-    // Yield to UI between chunks
     if (end < totalPages) {
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
@@ -211,10 +261,6 @@ export async function scanPdf(
   return mergeContinuationPages(results);
 }
 
-/**
- * Merge continuation pages: if consecutive pages share name+month,
- * or if a low-confidence page follows a high-confidence one.
- */
 function mergeContinuationPages(
   payslips: ParsedPayslip[]
 ): ParsedPayslip[] {
@@ -224,7 +270,6 @@ function mergeContinuationPages(
     const prev = merged[merged.length - 1];
 
     if (prev && slip.confidence === "none" && prev.confidence !== "none") {
-      // Continuation page — inherit name/month from previous
       merged.push({
         ...slip,
         name: prev.name,
@@ -233,14 +278,6 @@ function mergeContinuationPages(
         monthLabel: prev.monthLabel,
         confidence: "partial",
       });
-    } else if (
-      prev &&
-      slip.name === prev.name &&
-      slip.monthLabel === prev.monthLabel &&
-      slip.confidence !== "none"
-    ) {
-      // Same person, same month — keep as separate entry but mark
-      merged.push(slip);
     } else {
       merged.push(slip);
     }
