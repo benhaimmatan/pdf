@@ -45,14 +45,14 @@ export async function downloadAsZip(results: SplitResult[]): Promise<void> {
 
   if (uniqueNames.length <= 1) {
     // Single employee (or all unknown) — one ZIP
-    await buildAndDownloadZip(results, buildZipFilename(uniqueNames));
+    await buildAndDownloadZip(results, buildZipFilename(uniqueNames[0] ?? "תלושים"));
     return;
   }
 
   // Multiple employees — one ZIP per employee
   for (const name of uniqueNames) {
     const employeeResults = results.filter((r) => r.employeeName === name);
-    await buildAndDownloadZip(employeeResults, buildZipFilename([name]));
+    await buildAndDownloadZip(employeeResults, buildZipFilename(name));
   }
 }
 
