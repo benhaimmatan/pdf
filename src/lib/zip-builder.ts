@@ -15,7 +15,7 @@ function triggerDownload(blob: Blob, filename: string) {
 /**
  * Bundle split PDFs into a ZIP and trigger download.
  */
-export async function downloadAsZip(results: SplitResult[]): Promise<void> {
+export async function downloadAsZip(results: SplitResult[], employeeNames: string[]): Promise<void> {
   const JSZip = (await import("jszip")).default;
 
   const zip = new JSZip();
@@ -33,7 +33,7 @@ export async function downloadAsZip(results: SplitResult[]): Promise<void> {
   }
 
   const blob = await zip.generateAsync({ type: "blob" });
-  triggerDownload(blob, buildZipFilename());
+  triggerDownload(blob, buildZipFilename(employeeNames));
 }
 
 /**

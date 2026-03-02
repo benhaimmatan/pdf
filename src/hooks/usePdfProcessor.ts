@@ -156,7 +156,8 @@ export function usePdfProcessor() {
       );
 
       const { downloadAsZip } = await import("@/lib/zip-builder");
-      await downloadAsZip(results);
+      const names = selectedPayslips.map((p) => p.name ?? "");
+      await downloadAsZip(results, names);
 
       // Return to ready state
       setAppState({ stage: "ready", result: scanResultRef.current! });

@@ -93,9 +93,13 @@ export function buildFilename(
 /**
  * Build ZIP filename with current date.
  */
-export function buildZipFilename(): string {
+export function buildZipFilename(employeeNames: string[]): string {
   const now = new Date();
   const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const unique = [...new Set(employeeNames.filter(Boolean))];
+  if (unique.length === 1) {
+    return `תלושי_שכר_${unique[0]}_${date}.zip`;
+  }
   return `תלושי_שכר_${date}.zip`;
 }
 
