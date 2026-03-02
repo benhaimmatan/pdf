@@ -1,12 +1,22 @@
 import type { SplitResult } from "./pdf-splitter";
 import { buildZipFilename } from "./hebrew-utils";
 
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 /**
  * Bundle split PDFs into a ZIP and trigger download.
  */
 export async function downloadAsZip(results: SplitResult[]): Promise<void> {
   const JSZip = (await import("jszip")).default;
-  const { saveAs } = await import("file-saver");
 
   const zip = new JSZip();
 
@@ -23,7 +33,7 @@ export async function downloadAsZip(results: SplitResult[]): Promise<void> {
   }
 
   const blob = await zip.generateAsync({ type: "blob" });
-  saveAs(blob, buildZipFilename());
+  triggerDownload(blob, buildZipFilename());
 }
 
 /**
@@ -33,7 +43,6 @@ export async function downloadSinglePdf(
   filename: string,
   data: Uint8Array
 ): Promise<void> {
-  const { saveAs } = await import("file-saver");
-  const blob = new Blob([new Uint8Array(data) as BlobPart], { type: "application/pdf" });
-  saveAs(blob, filename);
+  const blob = new Blob([new Uint8Array(data)], { type: "application/pdf" });
+  triggerDownload(blob, filename);
 }

@@ -20,7 +20,8 @@ export function usePdfProcessor() {
   const handleFile = useCallback(async (file: File) => {
     try {
       const buffer = await file.arrayBuffer();
-      sourceBufferRef.current = buffer;
+      // Clone the buffer — pdfjs transfers it to a web worker, detaching the original
+      sourceBufferRef.current = buffer.slice(0);
 
       setAppState({ stage: "scanning", progress: 0, total: 0 });
 

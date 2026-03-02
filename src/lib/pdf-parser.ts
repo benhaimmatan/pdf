@@ -152,11 +152,18 @@ function extractName(texts: string[], isDocReversed: boolean): string | null {
         if (name.length > 1) return name;
       }
 
-      // Check next text items
+      // Check next text items — name can be Hebrew or English (Latin)
       for (let j = i + 1; j < Math.min(i + 5, texts.length); j++) {
+        // For English names: use raw text (not reversed) since LTR stays correct
+        const raw = texts[j];
+        const isLatin = /^[A-Za-z\s]+$/.test(raw.trim()) && raw.trim().length > 2;
+        if (isLatin) {
+          return raw.trim();
+        }
+
         const next = normalizeRawText(texts[j], isDocReversed);
         const name = cleanName(next);
-        // A name should be mostly Hebrew, 2+ chars, no colons
+        // A Hebrew name: 2+ chars, no colons
         if (
           name.length > 2 &&
           !name.includes(":") &&

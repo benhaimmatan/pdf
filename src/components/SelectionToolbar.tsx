@@ -28,13 +28,15 @@ export function SelectionToolbar({
           </span>
           <button
             onClick={onSelectAll}
-            className="text-sm text-blue-500 hover:text-blue-700"
+            disabled={selectedCount === totalCount}
+            className="rounded-md border border-blue-300 bg-blue-50 px-3 py-1 text-sm font-medium text-blue-600 hover:bg-blue-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             בחר הכל
           </button>
           <button
             onClick={onSelectNone}
-            className="text-sm text-gray-500 hover:text-gray-700"
+            disabled={selectedCount === 0}
+            className="rounded-md border border-gray-300 bg-gray-50 px-3 py-1 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             נקה בחירה
           </button>
