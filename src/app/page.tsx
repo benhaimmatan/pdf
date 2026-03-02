@@ -27,7 +27,7 @@ export default function Home() {
       {/* Header */}
       <div className="mb-8 text-center">
         <h1 className="text-3xl font-bold text-gray-800">
-          מפצל תלושי שכר
+          המפצלת
         </h1>
         <p className="mt-2 text-gray-500">
           העלה קבצי PDF עם תלושי שכר, בחר עובדים וחודשים, והורד תלושים

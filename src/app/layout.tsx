@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "מפצל תלושי שכר",
+  title: "המפצלת",
   description: "העלה קובץ PDF עם תלושי שכר מרובים, בחר עובדים וחודשים, והורד תלושים בודדים",
 };
 
