@@ -12,7 +12,7 @@ export default function Home() {
   const {
     appState,
     selection,
-    handleFile,
+    handleFiles,
     togglePage,
     togglePerson,
     selectAll,
@@ -30,17 +30,17 @@ export default function Home() {
           מפצל תלושי שכר
         </h1>
         <p className="mt-2 text-gray-500">
-          העלה קובץ PDF עם תלושי שכר מרובים, בחר עובדים וחודשים, והורד תלושים
+          העלה קבצי PDF עם תלושי שכר, בחר עובדים וחודשים, והורד תלושים
           בודדים
         </p>
       </div>
 
       {/* Idle — upload */}
-      {appState.stage === "idle" && <FileUpload onFile={handleFile} />}
+      {appState.stage === "idle" && <FileUpload onFiles={handleFiles} />}
 
       {/* Scanning */}
       {appState.stage === "scanning" && (
-        <ScanProgress progress={appState.progress} total={appState.total} />
+        <ScanProgress progress={appState.progress} total={appState.total} fileProgress={appState.fileProgress} />
       )}
 
       {/* Ready — show results */}

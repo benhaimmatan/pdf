@@ -3,10 +3,10 @@
 import { useCallback, useRef, useState } from "react";
 
 interface FileUploadProps {
-  onFile: (file: File) => void;
+  onFiles: (files: File[]) => void;
 }
 
-export function FileUpload({ onFile }: FileUploadProps) {
+export function FileUpload({ onFiles }: FileUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -14,20 +14,24 @@ export function FileUpload({ onFile }: FileUploadProps) {
     (e: React.DragEvent) => {
       e.preventDefault();
       setIsDragging(false);
-      const file = e.dataTransfer.files[0];
-      if (file?.type === "application/pdf") {
-        onFile(file);
+      const pdfFiles = Array.from(e.dataTransfer.files).filter(
+        (f) => f.type === "application/pdf"
+      );
+      if (pdfFiles.length > 0) {
+        onFiles(pdfFiles);
       }
     },
-    [onFile]
+    [onFiles]
   );
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) onFile(file);
+      const files = e.target.files;
+      if (files && files.length > 0) {
+        onFiles(Array.from(files));
+      }
     },
-    [onFile]
+    [onFiles]
   );
 
   return (
@@ -53,15 +57,16 @@ export function FileUpload({ onFile }: FileUploadProps) {
         ref={inputRef}
         type="file"
         accept=".pdf,application/pdf"
+        multiple
         onChange={handleChange}
         className="hidden"
       />
       <div className="mb-4 text-5xl">📄</div>
       <p className="text-lg font-medium text-gray-700">
-        גרור קובץ PDF לכאן
+        גרור קבצי PDF לכאן
       </p>
       <p className="mt-2 text-sm text-gray-500">
-        או לחץ לבחירת קובץ
+        או לחץ לבחירת קבצים (ניתן לבחור מספר קבצים)
       </p>
     </div>
   );

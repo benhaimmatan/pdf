@@ -3,9 +3,10 @@
 interface ScanProgressProps {
   progress: number;
   total: number;
+  fileProgress?: { current: number; total: number };
 }
 
-export function ScanProgress({ progress, total }: ScanProgressProps) {
+export function ScanProgress({ progress, total, fileProgress }: ScanProgressProps) {
   const pct = total > 0 ? Math.round((progress / total) * 100) : 0;
 
   return (
@@ -14,6 +15,11 @@ export function ScanProgress({ progress, total }: ScanProgressProps) {
       <p className="mb-3 text-lg font-medium text-gray-700">
         סורק תלושי שכר...
       </p>
+      {fileProgress && fileProgress.total > 1 && (
+        <p className="mb-2 text-sm font-medium text-gray-600">
+          קובץ {fileProgress.current} מתוך {fileProgress.total}
+        </p>
+      )}
       <div className="mb-2 h-3 overflow-hidden rounded-full bg-gray-200">
         <div
           className="h-full rounded-full bg-blue-500 transition-all duration-300"

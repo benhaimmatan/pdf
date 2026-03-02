@@ -14,28 +14,61 @@ export function usePdfProcessor() {
   const [selection, setSelection] = useState<SelectionState>({
     selected: new Set(),
   });
-  const sourceBufferRef = useRef<ArrayBuffer | null>(null);
+  const sourceBuffersRef = useRef<Map<string, ArrayBuffer>>(new Map());
   const scanResultRef = useRef<ScanResult | null>(null);
 
-  const handleFile = useCallback(async (file: File) => {
+  const handleFiles = useCallback(async (files: File[]) => {
     try {
-      const buffer = await file.arrayBuffer();
-      // Clone the buffer — pdfjs transfers it to a web worker, detaching the original
-      sourceBufferRef.current = buffer.slice(0);
-
-      setAppState({ stage: "scanning", progress: 0, total: 0 });
+      setAppState({ stage: "scanning", progress: 0, total: 0, fileProgress: { current: 0, total: files.length } });
 
       const { scanPdf } = await import("@/lib/pdf-parser");
-      const payslips = await scanPdf(buffer, (current, total) => {
-        setAppState({ stage: "scanning", progress: current, total });
-      });
+      const allPayslips: ParsedPayslip[] = [];
+      const buffers = new Map<string, ArrayBuffer>();
+      let globalPageOffset = 0;
 
-      const result = buildScanResult(payslips);
+      for (let fileIdx = 0; fileIdx < files.length; fileIdx++) {
+        const file = files[fileIdx];
+        const fileId = String(fileIdx);
+        const buffer = await file.arrayBuffer();
+        // Clone the buffer — pdfjs transfers it to a web worker, detaching the original
+        buffers.set(fileId, buffer.slice(0));
+
+        setAppState({
+          stage: "scanning",
+          progress: 0,
+          total: 0,
+          fileProgress: { current: fileIdx + 1, total: files.length },
+        });
+
+        const payslips = await scanPdf(buffer, (current, total) => {
+          setAppState({
+            stage: "scanning",
+            progress: current,
+            total,
+            fileProgress: { current: fileIdx + 1, total: files.length },
+          });
+        });
+
+        // Tag each payslip with source info and assign globally unique pageIndex
+        for (const slip of payslips) {
+          allPayslips.push({
+            ...slip,
+            sourceFileId: fileId,
+            sourcePageIndex: slip.pageIndex,
+            pageIndex: globalPageOffset + slip.pageIndex,
+          });
+        }
+        globalPageOffset += payslips.length;
+      }
+
+      sourceBuffersRef.current = buffers;
+
+      const result = buildScanResult(allPayslips);
       scanResultRef.current = result;
 
       // Select all high-confidence payslips by default
       const defaultSelected = new Set(
-        payslips
+        allPayslips
           .filter((p) => p.confidence !== "none")
           .map((p) => p.pageIndex)
       );
@@ -99,7 +132,7 @@ export function usePdfProcessor() {
   }, []);
 
   const downloadSelected = useCallback(async () => {
-    if (appState.stage !== "ready" || !sourceBufferRef.current) return;
+    if (appState.stage !== "ready" || sourceBuffersRef.current.size === 0) return;
 
     const selectedPayslips = appState.result.payslips.filter((p) =>
       selection.selected.has(p.pageIndex)
@@ -115,7 +148,7 @@ export function usePdfProcessor() {
 
       const { splitPdf } = await import("@/lib/pdf-splitter");
       const results = await splitPdf(
-        sourceBufferRef.current,
+        sourceBuffersRef.current,
         selectedPayslips,
         (current, total) => {
           setAppState({ stage: "downloading", progress: current, total });
@@ -136,11 +169,11 @@ export function usePdfProcessor() {
 
   const downloadSingle = useCallback(
     async (payslip: ParsedPayslip) => {
-      if (!sourceBufferRef.current) return;
+      if (sourceBuffersRef.current.size === 0) return;
 
       try {
         const { splitPdf } = await import("@/lib/pdf-splitter");
-        const results = await splitPdf(sourceBufferRef.current, [payslip]);
+        const results = await splitPdf(sourceBuffersRef.current, [payslip]);
 
         if (results.length > 0) {
           const { downloadSinglePdf } = await import("@/lib/zip-builder");
@@ -154,7 +187,7 @@ export function usePdfProcessor() {
   );
 
   const reset = useCallback(() => {
-    sourceBufferRef.current = null;
+    sourceBuffersRef.current = new Map();
     scanResultRef.current = null;
     setSelection({ selected: new Set() });
     setAppState({ stage: "idle" });
@@ -163,7 +196,7 @@ export function usePdfProcessor() {
   return {
     appState,
     selection,
-    handleFile,
+    handleFiles,
     togglePage,
     togglePerson,
     selectAll,

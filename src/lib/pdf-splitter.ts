@@ -7,16 +7,21 @@ export interface SplitResult {
 }
 
 /**
- * Create individual PDFs from selected pages.
+ * Create individual PDFs from selected pages across multiple source files.
  */
 export async function splitPdf(
-  sourceBuffer: ArrayBuffer,
+  sourceBuffers: Map<string, ArrayBuffer>,
   payslips: ParsedPayslip[],
   onProgress?: (current: number, total: number) => void
 ): Promise<SplitResult[]> {
   const { PDFDocument } = await import("pdf-lib");
 
-  const sourcePdf = await PDFDocument.load(sourceBuffer);
+  // Load each source PDF once
+  const sourcePdfs = new Map<string, import("pdf-lib").PDFDocument>();
+  for (const [fileId, buffer] of sourceBuffers) {
+    sourcePdfs.set(fileId, await PDFDocument.load(buffer));
+  }
+
   const results: SplitResult[] = [];
 
   // Group payslips by name+month to combine multi-page payslips
@@ -33,10 +38,12 @@ export async function splitPdf(
 
   for (const [, group] of groups) {
     const newPdf = await PDFDocument.create();
-    const pageIndices = group.map((s) => s.pageIndex);
-    const copiedPages = await newPdf.copyPages(sourcePdf, pageIndices);
-    for (const page of copiedPages) {
-      newPdf.addPage(page);
+
+    for (const slip of group) {
+      const sourcePdf = sourcePdfs.get(slip.sourceFileId);
+      if (!sourcePdf) continue;
+      const [copiedPage] = await newPdf.copyPages(sourcePdf, [slip.sourcePageIndex]);
+      newPdf.addPage(copiedPage);
     }
 
     const pdfBytes = await newPdf.save();

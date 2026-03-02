@@ -226,6 +226,8 @@ export async function parsePage(
       : null,
     confidence,
     rawText: texts.map((t) => normalizeRawText(t, isDocReversed)).join("\n"),
+    sourceFileId: "0",
+    sourcePageIndex: pageIndex,
   };
 }
 

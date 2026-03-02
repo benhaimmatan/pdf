@@ -1,5 +1,5 @@
 export interface ParsedPayslip {
-  /** 0-based page index in the source PDF */
+  /** Globally unique page index across all uploaded files (used for selection/UI) */
   pageIndex: number;
   /** Employee name extracted from the page */
   name: string | null;
@@ -13,6 +13,10 @@ export interface ParsedPayslip {
   confidence: "high" | "partial" | "none";
   /** Raw text extracted from the page (for debugging) */
   rawText?: string;
+  /** Identifies which uploaded file this page came from */
+  sourceFileId: string;
+  /** 0-based page index within the source file (for PDF page operations) */
+  sourcePageIndex: number;
 }
 
 export interface PayslipGroup {
@@ -35,7 +39,7 @@ export interface ScanResult {
 
 export type AppState =
   | { stage: "idle" }
-  | { stage: "scanning"; progress: number; total: number }
+  | { stage: "scanning"; progress: number; total: number; fileProgress?: { current: number; total: number } }
   | { stage: "ready"; result: ScanResult }
   | { stage: "downloading"; progress: number; total: number }
   | { stage: "error"; message: string };
