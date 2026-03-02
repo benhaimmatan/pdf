@@ -13,11 +13,10 @@ function triggerDownload(blob: Blob, filename: string) {
 }
 
 /**
- * Bundle split PDFs into a ZIP and trigger download.
+ * Build a single ZIP from the given results and trigger download.
  */
-export async function downloadAsZip(results: SplitResult[], employeeNames: string[]): Promise<void> {
+async function buildAndDownloadZip(results: SplitResult[], zipFilename: string): Promise<void> {
   const JSZip = (await import("jszip")).default;
-
   const zip = new JSZip();
 
   // Handle duplicate filenames by appending a counter
@@ -33,7 +32,28 @@ export async function downloadAsZip(results: SplitResult[], employeeNames: strin
   }
 
   const blob = await zip.generateAsync({ type: "blob" });
-  triggerDownload(blob, buildZipFilename(employeeNames));
+  triggerDownload(blob, zipFilename);
+}
+
+/**
+ * Bundle split PDFs into ZIP(s) and trigger download.
+ * If results belong to a single employee, creates one ZIP.
+ * If multiple employees, creates a separate ZIP per employee.
+ */
+export async function downloadAsZip(results: SplitResult[]): Promise<void> {
+  const uniqueNames = [...new Set(results.map((r) => r.employeeName))];
+
+  if (uniqueNames.length <= 1) {
+    // Single employee (or all unknown) — one ZIP
+    await buildAndDownloadZip(results, buildZipFilename(uniqueNames));
+    return;
+  }
+
+  // Multiple employees — one ZIP per employee
+  for (const name of uniqueNames) {
+    const employeeResults = results.filter((r) => r.employeeName === name);
+    await buildAndDownloadZip(employeeResults, buildZipFilename([name]));
+  }
 }
 
 /**

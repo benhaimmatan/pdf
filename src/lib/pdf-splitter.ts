@@ -4,6 +4,7 @@ import { buildFilename } from "./hebrew-utils";
 export interface SplitResult {
   filename: string;
   data: Uint8Array;
+  employeeName: string;
 }
 
 /**
@@ -54,7 +55,7 @@ export async function splitPdf(
       first.year ?? "ללא_שנה"
     );
 
-    results.push({ filename, data: pdfBytes });
+    results.push({ filename, data: pdfBytes, employeeName: first.name ?? "ללא_שם" });
     done++;
     onProgress?.(done, total);
   }
