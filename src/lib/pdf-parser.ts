@@ -179,7 +179,7 @@ export async function scanPdf(
   const pdfjsLib = await import("pdfjs-dist");
 
   pdfjsLib.GlobalWorkerOptions.workerSrc =
-    `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.5.207/pdf.worker.min.mjs`;
+    `https://cdn.jsdelivr.net/npm/pdfjs-dist@5.5.207/build/pdf.worker.min.mjs`;
 
   const pdf = await pdfjsLib.getDocument({ data: file }).promise;
   const totalPages = pdf.numPages;
